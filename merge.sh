@@ -1,0 +1,1 @@
+ls -v *.json | xargs cat > all.json
