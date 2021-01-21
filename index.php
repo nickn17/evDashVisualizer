@@ -72,28 +72,31 @@ class EvDashboardOverview {
             "socPerc" => array("title" => "SOC", "format" => "%02.0f", "unit" => "%"),
             "sohPerc" => array("title" => "SOH", "format" => "%02.1f", "unit" => "%"),
             "speedKmh" => array("title" => "Speed", "format" => "%02.0f", "unit" => "km/h"),
-            "motorRpm" => array("title" => "Motor", "format" => "%03.0f", "unit" => "rpm"),
             "odoKm" => array("title" => "Odometer", "format" => "%03.0f", "unit" => "km"),
+            "alt" => array("title" => "Altitude", "format" => "%03.0f", "unit" => "m"),
             "-",
             "batPowKw" => array("title" => "Bat.power", "format" => "%03.1f", "unit" => "kW"),
             "powKwh100" => array("title" => "kWh/100km", "format" => "%03.1f", "unit" => ""),
             "batPowA" => array("title" => "Bat.current", "format" => "%03.1f", "unit" => "A"),
             "batV" => array("title" => "Bat.voltage", "format" => "%03.1f", "unit" => "V"),
             "maxChKw" => array("title" => "Avail.charg.power", "format" => "%03.1f", "unit" => "kW"),
-            "maxDisKw" => array("title" => "Avail.disch.power", "format" => "%03.1f", "unit" => "kW"),
+//            "maxDisKw" => array("title" => "Avail.disch.power", "format" => "%03.1f", "unit" => "kW"),
             "cellMinV" => array("title" => "Cell min.voltage", "format" => "%03.2f", "unit" => "V"),
             "cellMaxV" => array("title" => "Cell max.voltage", "format" => "%03.2f", "unit" => "V"),
             "-",
+            "bmMode" => array("title" => "Bat.management", "unit" => ""),
             "bMinC" => array("title" => "Bat.min.temp.", "format" => "%02.0f", "unit" => "°C"),
             "bMaxC" => array("title" => "Bat.max.temp.", "format" => "%02.0f", "unit" => "°C"),
             "bHeatC" => array("title" => "Bat.heater.temp.", "format" => "%02.0f", "unit" => "°C"),
-            "bInletC" => array("title" => "Bat.inlet temp.", "format" => "%02.0f", "unit" => "°C"),
             "bWatC" => array("title" => "Water cooling temp", "format" => "%02.0f", "unit" => "°C"),
-            "bFanSt" => array("title" => "Bat.FAN status", "unit" => ""),
+//            "bFanSt" => array("title" => "Bat.FAN status", "unit" => ""),
+            "bInletC" => array("title" => "Bat.inlet temp.", "format" => "%02.0f", "unit" => "°C"),
             "tmpA" => array("title" => "Unknown temp.A", "format" => "%02.0f", "unit" => "°C"),
             "tmpB" => array("title" => "Unknown temp.B", "format" => "%02.0f", "unit" => "°C"),
             "tmpC" => array("title" => "Unknown temp.C", "format" => "%02.0f", "unit" => "°C"),
             "tmpD" => array("title" => "Unknown temp.D", "format" => "%02.0f", "unit" => "°C"),
+            "motC" => array("title" => "Motor temp.", "format" => "%02.0f", "unit" => "°C"),
+            "invC" => array("title" => "Inverter temp.", "format" => "%02.0f", "unit" => "°C"),
             "-",
             "auxPerc" => array("title" => "AUX (12V bat.)", "format" => "%02.0f", "unit" => "%"),
             "auxV" => array("title" => "AUX voltage", "format" => "%03.1f", "unit" => "V"),
@@ -104,14 +107,10 @@ class EvDashboardOverview {
             "c1C" => array("title" => "Coolant temp.1", "format" => "%03.1f", "unit" => "°C"),
             "c2C" => array("title" => "Coolant temp.2", "format" => "%03.1f", "unit" => "°C"),
             "-",
-            "tFlC" => array("title" => "Front left tire", "format" => "%03.0f", "unit" => "°C"),
-            "tFlBar" => array("title" => " ", "format" => "%03.1f", "unit" => "Bar"),
-            "tFrC" => array("title" => "Front right tire", "format" => "%03.0f", "unit" => "°C"),
-            "tFrBar" => array("title" => " ", "format" => "%03.1f", "unit" => "Bar"),
-            "tRlC" => array("title" => "Rear left tire", "format" => "%03.0f", "unit" => "°C"),
-            "tRlBar" => array("title" => " ", "format" => "%03.1f", "unit" => "Bar"),
-            "tRrC" => array("title" => "Rear right tire", "format" => "%03.0f", "unit" => "°C"),
-            "tRrBar" => array("title" => " ", "format" => "%03.1f", "unit" => "Bar"),
+            "tFlBar" => array("title" => "Front left tire", "format" => "%03.1f", "unit" => "Bar"),
+            "tFrBar" => array("title" => "Front right tire", "format" => "%03.1f", "unit" => "Bar"),
+            "tRlBar" => array("title" => "Rear left tire", "format" => "%03.1f", "unit" => "Bar"),
+            "tRrBar" => array("title" => "Rear right tire", "format" => "%03.1f", "unit" => "Bar"),
         );
     }
 
@@ -147,10 +146,11 @@ class EvDashboardOverview {
     function preprocessData($jsonFileName, $onlyStaticImage = true) {
 
         $this->onlyStaticImage = $onlyStaticImage;
-
-        if (substr(strtolower($jsonFileName), -5) != ".json")
+        $this->fileName = $jsonFileName;
+        if (substr(strtolower($this->fileName), -5) != ".json")
             die("JSON file required");
-        $data = file_get_contents($jsonFileName);
+
+        $data = file_get_contents($this->fileName);
         $data = rtrim(rtrim($data, "\n"), ",");
         $data = "[" . $data . "]";
 //$data = '{"carType":0,"batTotalKwh":64,"currTime":1589013371,"opTime":4913451,"socPerc":52.5,"sohPerc":100,"powKwh100":41928.39,"speedKmh":0.093,"motorRpm":0,"odoKm":50460,"batPowKw":38.9934,"batPowA":104.4,"batV":373.5,"cecKwh":10829.4,"cedKwh":10131.4,"maxChKw":42.14,"maxDisKw":11.79,"cellMinV":3.8,"cellMaxV":3.8,"bMinC":8,"bMaxC":10,"bHeatC":20,"bInletC":20,"bFanSt":0,"bWatC":20,"tmpA":20,"tmpB":10,"tmpC":8,"tmpD":13,"auxPerc":65,"auxV":14.6,"auxA":15.231,"inC":22,"outC":7.5,"c1C":44,"c2C":6.5,"tFlC":15,"tFlBar":2.6,"tFrC":16,"tFrBar":2.5,"tRlC":13,"tRlBar":2.4,"tRrC":14,"tRrBar":2.5}';
@@ -166,9 +166,32 @@ class EvDashboardOverview {
             "latStartPoint" => -1,
             "lonStartPoint" => -1,
         );
-        foreach ($this->jsonData as $row) {
-            if ($row['odoKm'] == -1 || $row['socPerc'] == -1)
+        foreach ($this->jsonData as $key => &$row) {
+            // Calculated battery management mode if not present
+            if (!isset($row['bmMode'])) {
+                $row['bmMode'] = "-";
+                $debug06 = $row['debug2'];
+                $debug06 = str_replace("ATSH7E4/220106/", "", $debug06);
+                if (strpos($debug06, "620106") !== false) {
+                    $tempByte = hexdec(substr($debug06, 34, 2));
+                    switch ($tempByte & 0xf) {
+                        case 3: $row['bmMode'] = "LTR";
+                            break;
+                        case 4: $row['bmMode'] = "COOLING";
+                            break;
+                        case 6: $row['bmMode'] = "OFF";
+                            break;
+                        case 0xE: $row['bmMode'] = "PTC HEATER";
+                            break;
+                        default: $row['bmMode'] = "UNKNOWN";
+                    }
+                }
+            }
+            //
+            if ($row['odoKm'] <= 0 || $row['socPerc'] == -1) {
+                unset($this->jsonData[$key]);
                 continue;
+            }
             $this->params['keyframes'] ++;
             if ($this->params['minOdoKm'] == -1 || $row['odoKm'] < $this->params['minOdoKm'])
                 $this->params['minOdoKm'] = $row['odoKm'];
@@ -191,7 +214,7 @@ class EvDashboardOverview {
         }
         $this->params['graph0x'] = 400;
         $this->params['graph0y'] = $this->height * 0.66;
-        $this->params['xStep'] = ($this->width - $this->params['graph0x'] - 100) / self::TIME_SCREEN_FRAME;
+        $this->params['xStep'] = ($this->width - $this->params['graph0x'] - 32) / self::TIME_SCREEN_FRAME;
         $this->params['yStep'] = ($this->height - 96) / 200;
 
         $this->params['latCenter'] = ($this->params['latMax'] - $this->params['latMin']) / 2 + $this->params['latMin'];
@@ -223,7 +246,7 @@ class EvDashboardOverview {
     function renderSummary() {
 
         if (!$this->onlyStaticImage) {
-            $fp = fopen('summary.mjpeg', 'w');
+            $fp = fopen(str_replace(".json", "", $this->fileName) . '_sum.mjpeg', 'w');
         }
 
         // Render graphs
@@ -332,6 +355,8 @@ class EvDashboardOverview {
                         $text = "";
                     if ($key == "currTime")
                         $text = gmdate("y-m-d H:i:s", $row[$key]);
+                    if (strlen($key) == 6 && substr($key, -3) == "Bar")
+                        $text .= "/" . str_replace("Bar", "C", $row[str_replace("Bar", "C", $key)]) . "°C";
                     if ($obj['title'] != "")
                         $key = $obj['title'];
                 }
@@ -382,7 +407,7 @@ class EvDashboardOverview {
 
         // Render graphs
         if (!$this->onlyStaticImage) {
-            $fp = fopen('map.mjpeg', 'w');
+            $fp = fopen(str_replace(".json", "", $this->fileName) . '_map.mjpeg', 'w');
         }
 
         $eleStep = $this->width / $this->params['keyframes'];
@@ -407,7 +432,7 @@ class EvDashboardOverview {
             $this->offsetY += floor($this->height / 2);
             $this->offsetX += floor($startX - floor($this->centerX)) * $this->tileSize;
             $this->offsetY += floor($startY - floor($this->centerY)) * $this->tileSize;
-            $lonPerPixel = lonPerPixel($startX, $this->params['zoom']) * 5;
+            $lonPerPixel = lonPerPixel($startX, $this->params['zoom']);
             $latPerPixel = latPerPixel($startY, $this->params['zoom']);
             for ($x = $startX; $x <= $endX; $x++) {
                 for ($y = $startY; $y <= $endY; $y++) {
@@ -455,8 +480,12 @@ class EvDashboardOverview {
 
                 $this->liveData->processRow($row);
 
-                if ($row['odoKm'] == -1 || $row['socPerc'] == -1)
+                if ($row['odoKm'] <= 0 || $row['socPerc'] == -1)
                     continue;
+                if ($prevRow !== false && ($row['lat'] == -1 || $row['lon'] == -1)) {
+                    $row['lat'] = $prevRow['lat'];
+                    $row['lon'] = $prevRow['lon'];
+                }
                 if ($row['lat'] == -1 || $row['lon'] == -1)
                     continue;
 
@@ -499,14 +528,22 @@ class EvDashboardOverview {
                     imagefilledellipse($this->image, $x, $y, 12, 12, $trackColor);
                     imagettftext($this->image, 24, 0, $x + 16, $y + 16, $this->red, $this->font, sprintf("%2.0f%% %0.0fkm", $row['socPerc'], $row['odoKm'] - $this->params['minOdoKm']));
                     // Scroll map
-                    if ($x < 650)
-                        $this->params['lonCenter'] -= $lonPerPixel;
-                    if ($x > $this->width - 400)
-                        $this->params['lonCenter'] += $lonPerPixel;
-                    if ($y < 400)
-                        $this->params['latCenter'] += $latPerPixel;
-                    if ($y > $this->height - 400)
-                        $this->params['latCenter'] -= $latPerPixel;
+                    if ($x < 650) {
+                        $step = abs(650 - $x);
+                        $this->params['lonCenter'] -= ($step <= 0 ? 1 : $step) * $lonPerPixel;
+                    }
+                    if ($x > $this->width - 400) {
+                        $step = abs($x - ($this->width - 400));
+                        $this->params['lonCenter'] += ($step <= 0 ? 1 : $step) * $lonPerPixel;
+                    }
+                    if ($y < 400) {
+                        $step = abs(400 - $y);
+                        $this->params['latCenter'] += ($step <= 0 ? 1 : $step) * $latPerPixel;
+                    }
+                    if ($y > $this->height - 400) {
+                        $step = abs($y - ($this->height - 400));
+                        $this->params['latCenter'] -= ($step <= 0 ? 1 : $step) * $latPerPixel;
+                    }
                 }
 
                 $data = $this->liveData->getData();

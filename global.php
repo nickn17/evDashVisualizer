@@ -53,18 +53,21 @@ function latToTile($lat, $zoom) {
  * lonPerPixel
  */
 function lonPerPixel($tileNo, $zoom) {
-    return abs((($tileNo + 1) / pow(2, $zoom) * 360 - 180) - ($tileNo / pow(2, $zoom) * 360 - 180)) / 255;
+
+    $a1 = ($tileNo / pow(2, $zoom) * 360 - 180);
+    $a2 = (($tileNo + 1) / pow(2, $zoom) * 360 - 180);
+    return abs($a2 - $a1) / 256;
 }
 
 /**
  * latPerPixel
  */
 function latPerPixel($tileNo, $zoom) {
-    $n = pi() - 2 * pi() * $tileNo / pow(2, $zoom);
-    $a1 = (180 / pi() * tan(0.5 * (exp($n) - exp(-$n))));
-    $n = pi() - 2 * pi() * ($tileNo + 1) / pow(2, $zoom);
-    $a2 = (180 / pi() * tan(0.5 * (exp($n) - exp(-$n))));
-    return abs($a2 - $a1) / 255;
+    $n = pi() * (1 - 2 * $tileNo / pow(2, $zoom));
+    $a1 = rad2deg(atan(sinh($n)));
+    $n = pi() * (1 - 2 * ($tileNo + 1) / pow(2, $zoom));
+    $a2 = rad2deg(atan(sinh($n)));
+    return abs($a2 - $a1) / 256;
 }
 
 /*  tileToLon(x: number, zoom: number): number {
