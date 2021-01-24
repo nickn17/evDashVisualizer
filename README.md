@@ -1,4 +1,4 @@
-# evDashVisualizer
+# evDashVisualiser
 Create mjpeg animations from your evDash sdcard logs.
 
 ## PHP CLI USAGE
