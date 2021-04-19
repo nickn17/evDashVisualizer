@@ -175,6 +175,8 @@ class EvDashboardOverview {
                 if (strpos($debug06, "620106") !== false) {
                     $tempByte = hexdec(substr($debug06, 34, 2));
                     switch ($tempByte & 0xf) {
+                        case 1: $row['bmMode'] = "LTR COOLING";
+                            break;
                         case 3: $row['bmMode'] = "LTR";
                             break;
                         case 4: $row['bmMode'] = "COOLING";
@@ -188,10 +190,14 @@ class EvDashboardOverview {
                 }
             }
             //
-            if ($row['odoKm'] <= 0 || $row['socPerc'] == -1) {
+            if ($row['odoKm'] <= 0 || $row['socPerc'] == -1 || $row['socPerc'] == 0/* || $row['bWatC'] == -100 */) {
                 unset($this->jsonData[$key]);
                 continue;
             }
+            if (isset($row['speedKmhGPS']) && $row['speedKmhGPS'] != -1) {
+                $row['speedKmh'] = $row['speedKmhGPS'];
+            }
+
             $this->params['keyframes'] ++;
             if ($this->params['minOdoKm'] == -1 || $row['odoKm'] < $this->params['minOdoKm'])
                 $this->params['minOdoKm'] = $row['odoKm'];
