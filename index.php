@@ -4,7 +4,7 @@
 error_reporting(E_ALL & ~E_STRICT);
 ini_set('error_reporting', E_ALL & ~E_STRICT);
 ini_set('display_errors', 'On');
-ini_set('memory_limit', '1024M');
+ini_set('memory_limit', '2048M');
 
 include("global.php");
 include("LiveData.php");
@@ -31,6 +31,8 @@ class EvDashboardOverview {
     private $width = 1920;
     private $height = 1080;
     private $darkMode;
+    private $tileUrl;
+    private $hideInfo;
     // Map
     protected $tileSize = 256;
 
@@ -58,7 +60,10 @@ class EvDashboardOverview {
         }
 
         // Init structures
-        $this->darkMode = getNum("dark", 1);
+        $this->tileUrl = 'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        $this->tileUrl = 'https://tile-a.openstreetmap.fr/hot/{z}/{x}/{y}.png';
+        $this->darkMode = getNum("dark", 0);
+        $this->hideInfo = (getNum("info", 1) == 0);
         $this->speedup = getNum("speedup", 1);
         $this->liveData = new LiveData();
         $this->fields = array(
@@ -122,7 +127,7 @@ class EvDashboardOverview {
         $this->font = 'fonts/RobotoCondensed-Light.ttf';
         $this->white = imagecolorallocate($this->image, 255, 255, 255);
         $this->black = imagecolorallocate($this->image, 0, 0, 0);
-        $this->red = imagecolorallocate($this->image, 255, 128, 128);
+        $this->red = imagecolorallocate($this->image, 255, 0, 0);
         $this->green = imagecolorallocate($this->image, 0, 255, 0);
         $this->gridColor = imagecolorallocate($this->image, 24, 24, 24);
         $this->fields['socPerc']['color'] = imagecolorallocate($this->image, 255, 192, 16);
@@ -190,7 +195,8 @@ class EvDashboardOverview {
                 }
             }
             //
-            if ($row['odoKm'] <= 0 || $row['socPerc'] == -1 || $row['socPerc'] == 0/* || $row['bWatC'] == -100 */) {
+            if ($row['odoKm'] <= 1000 || $row['socPerc'] == -1 || $row['socPerc'] == 0 || $row['bWatC'] == -100 || $row['opTime'] == 0 || $row['currTime'] < 1533210449
+            ) {
                 unset($this->jsonData[$key]);
                 continue;
             }
@@ -442,7 +448,7 @@ class EvDashboardOverview {
             $latPerPixel = latPerPixel($startY, $this->params['zoom']);
             for ($x = $startX; $x <= $endX; $x++) {
                 for ($y = $startY; $y <= $endY; $y++) {
-                    $url = str_replace(array('{z}', '{x}', '{y}'), array($this->params['zoom'], $x, $y), 'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png');
+                    $url = str_replace(array('{z}', '{x}', '{y}'), array($this->params['zoom'], $x, $y), $this->tileUrl);
                     $tileData = fetchTile($url);
                     if ($tileData) {
                         $tileImage = imagecreatefromstring($tileData);
@@ -466,7 +472,8 @@ class EvDashboardOverview {
                 imagefilter($this->image, IMG_FILTER_NEGATE);
                 $opacity = imagecolorallocatealpha($this->image, 0, 0, 0, 100);
             } else {
-                $opacity = imagecolorallocatealpha($this->image, 255, 255, 255, 50);
+                //$opacity = imagecolorallocatealpha($this->image, 255, 255, 255, 50);
+                $opacity = imagecolorallocatealpha($this->image, 0, 0, 0, 127);
             }
             imagefilledrectangle($this->image, 0, 0, $this->width, $this->height, $opacity);
 
@@ -498,11 +505,13 @@ class EvDashboardOverview {
 
                 if ($prevRow !== false) {
                     // elevation graph
-                    imagesetthickness($this->image, 1);
-                    imageline($this->image, $cnt * $eleStep, $this->height - ($prevRow['alt'] / 5), ( $cnt * $eleStep) + 1, $this->height - ($row['alt'] / 5),
-                            ($this->darkMode ? ($row['speedKmh'] > 5 ? $this->white : $this->red) : $this->red));
+                    if (!$this->hideInfo) {
+                        imagesetthickness($this->image, ($this->darkMode ? 1 : 1));
+                        imageline($this->image, $cnt * $eleStep, $this->height - ($prevRow['alt'] / 5), ( $cnt * $eleStep) + 1, $this->height - ($row['alt'] / 5),
+                                ($this->darkMode ? ($row['speedKmh'] > 5 ? $this->white : $this->red) : $this->red));
+                    }
                     //
-                    imagesetthickness($this->image, 2);
+                    imagesetthickness($this->image, ($this->darkMode ? 2 : 3));
                     $x0 = floor(($this->width / 2) - $this->tileSize * ( $this->centerX - lonToTile($prevRow['lon'], $this->params['zoom'])));
                     $y0 = floor(($this->height / 2) - $this->tileSize * ($this->centerY - latToTile($prevRow['lat'], $this->params['zoom'])));
                     $x = floor(($this->width / 2) - $this->tileSize * ( $this->centerX - lonToTile($row['lon'], $this->params['zoom'])));
@@ -510,7 +519,7 @@ class EvDashboardOverview {
                     $i = abs($cnt - $frame) / 5;
                     if ($i > 50)
                         $i = 50;
-                    $trackColor = ($this->darkMode ? imagecolorallocatealpha($this->image, 255, 196, 40, $i) : imagecolorallocatealpha($this->image, 0, 0, 40, $i));
+                    $trackColor = ($this->darkMode ? imagecolorallocatealpha($this->image, 255, 196, 40, $i) : imagecolorallocatealpha($this->image, 0, 128, 40, $i));
                     imageline($this->image, $x0, $y0, $x, $y, $trackColor);
                 }
 
@@ -530,9 +539,13 @@ class EvDashboardOverview {
                 if ($row['odoKm'] != -1 && $row['socPerc'] != -1) {
                     $x = floor(($this->width / 2) - $this->tileSize * ( $this->centerX - lonToTile($row['lon'], $this->params['zoom'])));
                     $y = floor(($this->height / 2) - $this->tileSize * ($this->centerY - latToTile($row['lat'], $this->params['zoom'])));
-                    $trackColor = ($this->darkMode ? imagecolorallocatealpha($this->image, 255, 196, 40, 0) : imagecolorallocatealpha($this->image, 0, 0, 40, 0));
+                    $trackColor = ($this->darkMode ? imagecolorallocatealpha($this->image, 255, 196, 40, 0) : imagecolorallocatealpha($this->image, 0, 128, 40, 0));
                     imagefilledellipse($this->image, $x, $y, 12, 12, $trackColor);
-                    imagettftext($this->image, 24, 0, $x + 16, $y + 16, $this->red, $this->font, sprintf("%2.0f%% %0.0fkm", $row['socPerc'], $row['odoKm'] - $this->params['minOdoKm']));
+                    imagettftext($this->image, 24, 0, $x + 16, $y + 16, $this->red, $this->font,
+                            $this->hideInfo ?
+                                    sprintf("%0.0fkm", $row['odoKm'] - $this->params['minOdoKm']) :
+                                    sprintf("%2.0f%% %0.0fkm", $row['socPerc'], $row['odoKm'] - $this->params['minOdoKm'])
+                    );
                     // Scroll map
                     if ($x < 650) {
                         $step = abs(650 - $x);
@@ -552,118 +565,129 @@ class EvDashboardOverview {
                     }
                 }
 
-                $data = $this->liveData->getData();
-
-                $opacity = imagecolorallocatealpha($this->image, 0, 0, 0, 72);
-                imagefilledrectangle($this->image, 0, 0, $this->width, 110, $opacity);
-                $px = 175;
-                $this->drawMapOsd($px, 48, "SOC" . sprintf("%3.0f", $row['socPerc']) . "%", " ");
-                $px += 160;
-                $this->drawMapOsd($px, 48, $data[LiveData::MODE_DRIVE]['odoKm'] . "km", " ");
-                $px += 200;
-                $this->drawMapOsd($px, 48, "alt." . $row['alt'] . "m", " ");
-                $px += 80;
-                $this->drawMapOsd($px, 48, " ", gmdate("Y-m-d H:i:s", $row["currTime"]));
-
-                $px = 1450;
-                $this->drawMapOsd($px, 48, "OUT" . sprintf("%2.0f", $row['outC']) . "°C", " ");
-                $px += 250;
-                $this->drawMapOsd($px, 48, "BAT." . sprintf("%2.0f", $row['bMinC']) . "-" . sprintf("%2.0f", $row['bMaxC']) . "°C", " ");
-                $px += 176;
-                $this->drawMapOsd($px, 48, "IN" . sprintf("%2.0f", $row['inC']) . "°C", " ");
-
-
-                $px = 10;
-                $this->drawMapOsd($px, 96, " ", "DRIVE");
-                $px += 260;
-                $this->drawMapOsd($px, 96, formatHourMin($data[LiveData::MODE_DRIVE]['timeSec'])); //"48h25m");
-                $px += 130;
-                $this->drawMapOsd($px, 96, "+" . sprintf("%0.1f", $data[LiveData::MODE_DRIVE]['chargedKwh'], 1), round($data[LiveData::MODE_DRIVE]['dischargedKwh'], 1) . "kWh");
-                $px += 500;
-                if ($data[LiveData::MODE_DRIVE]['odoKm'] >= 1)
-                    $this->drawMapOsd($px, 96, "~" . sprintf("%0.1f", -($data[LiveData::MODE_DRIVE]['chargedKwh'] + $data[LiveData::MODE_DRIVE]['dischargedKwh']) / $data[LiveData::MODE_DRIVE]['odoKm'] * 100, 1) . "kWh/100km", " ");
-                $px += 20;
-                $this->drawMapOsd($px, 96, " ", "CHARGING");
-                $px += 340;
-                $this->drawMapOsd($px, 96, formatHourMin($data[LiveData::MODE_CHARGING]['timeSec'])); //"48h25m");
-                $px += 200;
-                $this->drawMapOsd($px, 96, "+" . sprintf("%0.1f", $data[LiveData::MODE_CHARGING]['chargedKwh'], 1) . "kWh", " ");
-                $px += 20;
-                $this->drawMapOsd($px, 96, " ", "IDLE");
-                $px += 240;
-                $this->drawMapOsd($px, 96, formatHourMin($data[LiveData::MODE_IDLE]['timeSec'])); //"48h25m");
-                $px += 170;
-                $this->drawMapOsd($px, 96, sprintf("%0.1f", $data[LiveData::MODE_IDLE]['dischargedKwh'], 1) . "kWh", " ");
-
-                // itinerar
-                $y = 180;
-                $opacity = imagecolorallocatealpha($this->image, 0, 0, 0, 72);
-                imagefilledrectangle($this->image, 20, $y + 4, 600, $y + 4 - 32, $opacity);
-                imagettftext($this->image, 20, 0, 30, $y, $this->white, $this->font, "MODE");
-                $text = "TIME";
-                $box = imagettfbbox(20, 0, $this->font, $text);
-                imagettftext($this->image, 20, 0, 220 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
-                $text = "DIS/CH.KWH";
-                $box = imagettfbbox(20, 0, $this->font, $text);
-                imagettftext($this->image, 20, 0, 370 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
-                $text = "KM/SOC";
-                $box = imagettfbbox(20, 0, $this->font, $text);
-                imagettftext($this->image, 20, 0, 470 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
-                $text = "~KWH/100KM";
-                $box = imagettfbbox(20, 0, $this->font, $text);
-                imagettftext($this->image, 20, 0, 630 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
-                $y += 32;
-                $lastSoc = 0;
-                foreach ($data['stats'] as $statsRow) {
+                if (!$this->hideInfo) {
+                    $data = $this->liveData->getData();
                     $opacity = imagecolorallocatealpha($this->image, 0, 0, 0, 72);
+                    $textColor = ($this->darkMode ? $this->white : $this->black);
+                    if (!$this->darkMode)
+                        $opacity = imagecolorallocatealpha($this->image, 255, 255, 255, 48);
+                    imagefilledrectangle($this->image, 0, 0, $this->width, 110, $opacity);
+                    $px = 175;
+                    $this->drawMapOsd($px, 48, $textColor, "SOC" . sprintf("%3.0f", $row['socPerc']) . "%", " ");
+                    $px += 160;
+                    $this->drawMapOsd($px, 48, $textColor, $data[LiveData::MODE_DRIVE]['odoKm'] . "km", " ");
+                    $px += 200;
+                    $this->drawMapOsd($px, 48, $textColor, "alt." . $row['alt'] . "m", " ");
+                    $px += 80;
+                    $this->drawMapOsd($px, 48, $textColor, " ", gmdate("Y-m-d H:i:s", $row["currTime"]));
+                    $px += 600;
+                    $this->drawMapOsd($px, 48, $textColor, "  " . round($row['speedKmh']) . "km/h", " ");
+
+                    $px = 1450;
+                    $this->drawMapOsd($px, 48, $textColor, "OUT" . sprintf("%2.0f", $row['outC']) . "°C", " ");
+                    $px += 250;
+                    $this->drawMapOsd($px, 48, $textColor, "BAT." . sprintf("%2.0f", $row['bMinC']) . "-" . sprintf("%2.0f", $row['bMaxC']) . "°C", " ");
+                    $px += 176;
+                    $this->drawMapOsd($px, 48, $textColor, "IN" . sprintf("%2.0f", $row['inC']) . "°C", " ");
+
+
+                    $px = 10;
+                    $this->drawMapOsd($px, 96, $textColor, " ", "DRIVE");
+                    $px += 260;
+                    $this->drawMapOsd($px, 96, $textColor, formatHourMin($data[LiveData::MODE_DRIVE]['timeSec'])); //"48h25m");
+                    $px += 130;
+                    $this->drawMapOsd($px, 96, $textColor, "+" . sprintf("%0.1f", $data[LiveData::MODE_DRIVE]['chargedKwh'], 1), round($data[LiveData::MODE_DRIVE]['dischargedKwh'], 1) . "kWh");
+                    $px += 500;
+                    if ($data[LiveData::MODE_DRIVE]['odoKm'] >= 1)
+                        $this->drawMapOsd($px, 96, $textColor, "~" . sprintf("%0.1f", -($data[LiveData::MODE_DRIVE]['chargedKwh'] + $data[LiveData::MODE_DRIVE]['dischargedKwh']) / $data[LiveData::MODE_DRIVE]['odoKm'] * 100, 1) . "kWh/100km", " ");
+                    $px += 20;
+                    $this->drawMapOsd($px, 96, $textColor, " ", "CHARGING");
+                    $px += 340;
+                    $this->drawMapOsd($px, 96, $textColor, formatHourMin($data[LiveData::MODE_CHARGING]['timeSec'])); //"48h25m");
+                    $px += 200;
+                    $this->drawMapOsd($px, 96, $textColor, "+" . sprintf("%0.1f", $data[LiveData::MODE_CHARGING]['chargedKwh'], 1) . "kWh", " ");
+                    $px += 20;
+                    $this->drawMapOsd($px, 96, $textColor, " ", "IDLE");
+                    $px += 240;
+                    $this->drawMapOsd($px, 96, $textColor, formatHourMin($data[LiveData::MODE_IDLE]['timeSec'])); //"48h25m");
+                    $px += 170;
+                    $this->drawMapOsd($px, 96, $textColor, sprintf("%0.1f", $data[LiveData::MODE_IDLE]['dischargedKwh'], 1) . "kWh", " ");
+
+                    // itinerar
+                    $y = 180;
+                    $opacity = imagecolorallocatealpha($this->image, 0, 0, 0, 72);
+                    if (!$this->darkMode)
+                        $opacity = imagecolorallocatealpha($this->image, 255, 255, 255, 48);
                     imagefilledrectangle($this->image, 20, $y + 4, 600, $y + 4 - 32, $opacity);
-                    //
-                    imagettftext($this->image, 20, 0, 30, $y, $this->white, $this->font, ($statsRow['mode'] == LiveData::MODE_DRIVE ? "DRIVE" : "CHARGE"));
-                    // time
-                    $text = formatHourMin($statsRow['timeSec']);
+                    imagettftext($this->image, 20, 0, 30, $y, $textColor, $this->font, "MODE");
+                    $text = "TIME";
                     $box = imagettfbbox(20, 0, $this->font, $text);
-                    imagettftext($this->image, 20, 0, 220 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
-                    //
-                    if ($statsRow['dischargedKwh'] != 0) {
-                        $text = sprintf("%2.1f", $statsRow['dischargedKwh']);
-                        $box = imagettfbbox(20, 0, $this->font, $text);
-                        imagettftext($this->image, 20, 0, 300 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
-                    }
-                    //
-                    $text = "+" . sprintf("%.1f", $statsRow['chargedKwh']);
+                    imagettftext($this->image, 20, 0, 220 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                    $text = "DIS/CH.KWH";
                     $box = imagettfbbox(20, 0, $this->font, $text);
-                    imagettftext($this->image, 20, 0, 370 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
-                    //
-                    if ($statsRow['mode'] == LiveData::MODE_DRIVE) {
-                        $text = $statsRow['odoKm'] . " km";
+                    imagettftext($this->image, 20, 0, 370 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                    $text = "KM/SOC";
+                    $box = imagettfbbox(20, 0, $this->font, $text);
+                    imagettftext($this->image, 20, 0, 470 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                    $text = "~KWH/100KM";
+                    $box = imagettfbbox(20, 0, $this->font, $text);
+                    imagettftext($this->image, 20, 0, 630 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                    $y += 32;
+                    $lastSoc = 0;
+                    foreach (array_slice($data['stats'], -10, 10) as $statsRow) {
+                        $opacity = imagecolorallocatealpha($this->image, 0, 0, 0, 72);
+                        if (!$this->darkMode)
+                            $opacity = imagecolorallocatealpha($this->image, 255, 255, 255, 48);
+                        imagefilledrectangle($this->image, 20, $y + 4, 600, $y + 4 - 32, $opacity);
+                        //
+                        imagettftext($this->image, 20, 0, 30, $y, $textColor, $this->font, ($statsRow['mode'] == LiveData::MODE_DRIVE ? "DRIVE" : "CHARGE"));
+                        // time
+                        $text = formatHourMin($statsRow['timeSec']);
                         $box = imagettfbbox(20, 0, $this->font, $text);
-                        imagettftext($this->image, 20, 0, 470 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
-                        if ($statsRow['odoKm'] > 0) {
-                            $text = "~" . -sprintf("%0.1f", round(($statsRow['dischargedKwh'] + $statsRow['chargedKwh']) / $statsRow['odoKm'] * 100, 1));
+                        imagettftext($this->image, 20, 0, 220 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                        //
+                        if ($statsRow['dischargedKwh'] != 0) {
+                            $text = sprintf("%2.1f", $statsRow['dischargedKwh']);
                             $box = imagettfbbox(20, 0, $this->font, $text);
-                            imagettftext($this->image, 20, 0, 540 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
-                        }
-                        $lastSoc = round($statsRow['endSocPerc']);
-                    }
-                    if ($statsRow['mode'] == LiveData::MODE_CHARGING) {
-                        $text = $lastSoc . "->" . round($statsRow['endSocPerc']) . ($statsRow['endSocPerc'] == 100 ? "" : "%");
-                        $box = imagettfbbox(20, 0, $this->font, $text);
-                        imagettftext($this->image, 20, 0, 470 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
-                        if ($statsRow['timeSec'] > 0) {
-                            $text = "~" . sprintf("%0.1f", ($statsRow['chargedKwh'] / ($statsRow['timeSec'] / 3600)), 1) . " kWh";
-                            $box = imagettfbbox(20, 0, $this->font, $text);
-                            imagettftext($this->image, 20, 0, 592 - (abs($box[4] - $box[0])), $y, $this->white, $this->font, $text);
+                            imagettftext($this->image, 20, 0, 300 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                         }
                         //
-                        $mx = floor(($this->width / 2) - $this->tileSize * ( $this->centerX - lonToTile($statsRow['lon'], $this->params['zoom'])));
-                        $my = floor(($this->height / 2) - $this->tileSize * ($this->centerY - latToTile($statsRow['lat'], $this->params['zoom'])));
-                        imagefilledellipse($this->image, $mx, $my, 12, 12, $this->green);
+                        $text = "+" . sprintf("%.1f", $statsRow['chargedKwh']);
+                        $box = imagettfbbox(20, 0, $this->font, $text);
+                        imagettftext($this->image, 20, 0, 370 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                        //
+                        if ($statsRow['mode'] == LiveData::MODE_DRIVE) {
+                            $text = $statsRow['odoKm'] . " km";
+                            $box = imagettfbbox(20, 0, $this->font, $text);
+                            imagettftext($this->image, 20, 0, 470 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                            if ($statsRow['odoKm'] > 0) {
+                                $text = "~" . -sprintf("%0.1f", round(($statsRow['dischargedKwh'] + $statsRow['chargedKwh']) / $statsRow['odoKm'] * 100, 1));
+                                $box = imagettfbbox(20, 0, $this->font, $text);
+                                imagettftext($this->image, 20, 0, 540 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                            }
+                            $lastSoc = round($statsRow['endSocPerc']);
+                        }
+                        if ($statsRow['mode'] == LiveData::MODE_CHARGING) {
+                            $text = $lastSoc . "->" . round($statsRow['endSocPerc']) . ($statsRow['endSocPerc'] == 100 ? "" : "%");
+                            $box = imagettfbbox(20, 0, $this->font, $text);
+                            imagettftext($this->image, 20, 0, 470 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                            if ($statsRow['timeSec'] > 0) {
+                                $text = "~" . sprintf("%0.1f", ($statsRow['chargedKwh'] / ($statsRow['timeSec'] / 3600)), 1) . " kW";
+                                $box = imagettfbbox(20, 0, $this->font, $text);
+                                imagettftext($this->image, 20, 0, 592 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                            }
+                            //
+                            $mx = floor(($this->width / 2) - $this->tileSize * ( $this->centerX - lonToTile($statsRow['lon'], $this->params['zoom'])));
+                            $my = floor(($this->height / 2) - $this->tileSize * ($this->centerY - latToTile($statsRow['lat'], $this->params['zoom'])));
+                            imagefilledellipse($this->image, $mx, $my, 12, 12, $this->green);
+                        }
+                        $y += 32;
                     }
-                    $y += 32;
                 }
             }
 
-            imagettftext($this->image, 12, 0, 8, $this->height - 8, $this->white, $this->font, 'map © OpenStreetMap, data © OpenStreetMap contributors, © SRTM');
+            $textColor = ($this->darkMode ? $this->white : $this->black);
+            imagettftext($this->image, 12, 0, 8, $this->height - 8, $textColor, $this->font, 'map © OpenStreetMap, data © OpenStreetMap contributors, © SRTM, Tiles style by Humanitarian OpenStreetMap Team hosted by OpenStreetMap France.');
             if ($this->onlyStaticImage) {
                 header('Content-type: image/jpeg');
             } else {
@@ -706,11 +730,11 @@ class EvDashboardOverview {
     /**
      * OSD
      */
-    private function drawMapOsd($x, $y, $left, $right = " ") {
+    private function drawMapOsd($x, $y, $textColor, $left, $right = " ") {
         $box = imagettfbbox(32, 0, $this->font, $left);
         $textWidth = abs($box[4] - $box[0]);
-        imagettftext($this->image, 32, 0, $x - $textWidth, $y, $this->white, $this->font, $left);
-        imagettftext($this->image, 32, 0, $x + 16, $y, $this->white, $this->font, $right);
+        imagettftext($this->image, 32, 0, $x - $textWidth, $y, $textColor, $this->font, $left);
+        imagettftext($this->image, 32, 0, $x + 16, $y, $textColor, $this->font, $right);
     }
 
 }
