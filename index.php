@@ -6,6 +6,13 @@ ini_set('error_reporting', E_ALL & ~E_STRICT);
 ini_set('display_errors', 'On');
 ini_set('memory_limit', '2048M');
 
+if (!extension_loaded("curl")) {
+    die("Enable curl extension in your php.ini\n");
+}
+if (!extension_loaded("gd")) {
+    die("Enable curl extension in your php.ini\n");
+}
+
 include("global.php");
 include("LiveData.php");
 
@@ -195,7 +202,8 @@ class EvDashboardOverview {
                 }
             }
             //
-            if ($row['odoKm'] <= 1000 || $row['socPerc'] == -1 || $row['socPerc'] == 0 || $row['bWatC'] == -100 || $row['opTime'] == 0 || $row['currTime'] < 1533210449
+            if ($row['odoKm'] <= 1000 || $row['socPerc'] == -1 || $row['currTime'] < 1533210449 ||
+                    ($row['carType'] == 0 /* eniro */ && ($row['socPerc'] == 0 || $row['bWatC'] == -100 || $row['opTime'] == 0))
             ) {
                 unset($this->jsonData[$key]);
                 continue;
