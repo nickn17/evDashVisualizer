@@ -1,8 +1,10 @@
 <?php
 
+// Install
+// composer require goat1000/svggraph
 //  ffmpeg -i test.mjpeg -pix_fmt yuv420p -b:v 4000k -c:v libx264 test.mp4
-error_reporting(E_ALL & ~E_STRICT);
-ini_set('error_reporting', E_ALL & ~E_STRICT);
+error_reporting(E_ALL & ~E_STRICT & ~E_DEPRECATED);
+ini_set('error_reporting', E_ALL & ~E_STRICT & ~E_DEPRECATED);
 ini_set('display_errors', 'On');
 ini_set('memory_limit', '2048M');
 
@@ -10,7 +12,7 @@ if (!extension_loaded("curl")) {
     die("Enable curl extension in your php.ini\n");
 }
 if (!extension_loaded("gd")) {
-    die("Enable curl extension in your php.ini\n");
+    die("Enable gd extension in your php.ini\n");
 }
 
 include("global.php");
@@ -72,6 +74,7 @@ class EvDashboardOverview {
         $this->darkMode = getNum("dark", 0);
         $this->hideInfo = (getNum("info", 1) == 0);
         $this->speedup = getNum("speedup", 1);
+        $this->bms = getNum("bms", 0);
         $this->liveData = new LiveData();
         $this->fields = array(
             //"carType" => array("title" => "", "unit" => ""),
@@ -132,6 +135,7 @@ class EvDashboardOverview {
     private function prepareColors() {
 
         $this->font = 'fonts/RobotoCondensed-Light.ttf';
+        $this->font2 = 'fonts/RobotoCondensed-Bold.ttf';
         $this->white = imagecolorallocate($this->image, 255, 255, 255);
         $this->black = imagecolorallocate($this->image, 0, 0, 0);
         $this->red = imagecolorallocate($this->image, 255, 0, 0);
@@ -167,9 +171,13 @@ class EvDashboardOverview {
         $data = "[" . $data . "]";
 //$data = '{"carType":0,"batTotalKwh":64,"currTime":1589013371,"opTime":4913451,"socPerc":52.5,"sohPerc":100,"powKwh100":41928.39,"speedKmh":0.093,"motorRpm":0,"odoKm":50460,"batPowKw":38.9934,"batPowA":104.4,"batV":373.5,"cecKwh":10829.4,"cedKwh":10131.4,"maxChKw":42.14,"maxDisKw":11.79,"cellMinV":3.8,"cellMaxV":3.8,"bMinC":8,"bMaxC":10,"bHeatC":20,"bInletC":20,"bFanSt":0,"bWatC":20,"tmpA":20,"tmpB":10,"tmpC":8,"tmpD":13,"auxPerc":65,"auxV":14.6,"auxA":15.231,"inC":22,"outC":7.5,"c1C":44,"c2C":6.5,"tFlC":15,"tFlBar":2.6,"tFrC":16,"tFrBar":2.5,"tRlC":13,"tRlBar":2.4,"tRrC":14,"tRrBar":2.5}';
         $this->jsonData = json_decode($data, true);
-
         // Prepare data
-        $this->params = array("keyframes" => 0, "minOdoKm" => -1, "minCurrTime" => -1, "maxCurrTime" => -1,
+        $this->params = array(
+            "keyframes" => 0,
+            "minOdoKm" => -1,
+            "maxOdoKm" => -1,
+            "minCurrTime" => -1,
+            "maxCurrTime" => -1,
             "chargingStartX" => -1,
             "latMin" => -1,
             "latMax" => -1,
@@ -182,7 +190,7 @@ class EvDashboardOverview {
             // Calculated battery management mode if not present
             if (!isset($row['bmMode'])) {
                 $row['bmMode'] = "-";
-                $debug06 = $row['debug2'];
+                $debug06 = (isset($row['debug2']) ? $row['debug2'] : "");
                 $debug06 = str_replace("ATSH7E4/220106/", "", $debug06);
                 if (strpos($debug06, "620106") !== false) {
                     $tempByte = hexdec(substr($debug06, 34, 2));
@@ -200,9 +208,14 @@ class EvDashboardOverview {
                         default: $row['bmMode'] = "UNKNOWN";
                     }
                 }
+                for ($i = 1; $i < 200; $i++) {
+                    if (isset($row['c' . $i . 'V']))
+                        unset($row['c' . $i . 'V']);
+                }
             }
             //
-            if ($row['odoKm'] <= 1000 || $row['socPerc'] == -1 || $row['currTime'] < 1533210449 ||
+            if ($row['odoKm'] <= 1000 || $row['socPerc'] == -1 || /* $row['currTime'] < 1533210449 || */
+                    $row['alt'] == -501 ||
                     ($row['carType'] == 0 /* eniro */ && ($row['socPerc'] == 0 || $row['bWatC'] == -100 || $row['opTime'] == 0))
             ) {
                 unset($this->jsonData[$key]);
@@ -211,6 +224,16 @@ class EvDashboardOverview {
             if (isset($row['speedKmhGPS']) && $row['speedKmhGPS'] != -1) {
                 $row['speedKmh'] = $row['speedKmhGPS'];
             }
+
+// xxxxx            
+//          if ($row['speedKmh'] > 10)  $row['speedKmh'] = $row['speedKmh'] - 111;
+// xxxxx            
+
+            if (($row['odoKm'] != 1.677721e7) && ($this->params['maxOdoKm'] == -1 || $row['odoKm'] > $this->params['maxOdoKm']))
+                $this->params['maxOdoKm'] = $row['odoKm'];
+            if ($row['odoKm'] == 1.677721e7)
+                $row['odoKm'] = $this->params['maxOdoKm'];
+            
 
             $this->params['keyframes'] ++;
             if ($this->params['minOdoKm'] == -1 || $row['odoKm'] < $this->params['minOdoKm'])
@@ -242,6 +265,9 @@ class EvDashboardOverview {
         $this->params['zoom'] = getNum("zoom", 12);
 
         //print_r($this->params);        die();
+        if ($this->params['keyframes'] == 0) {
+            die("no keyframes");
+        }
 
         $this->image = imagecreatetruecolor($this->width, $this->height);
         $this->prepareColors();
@@ -267,6 +293,8 @@ class EvDashboardOverview {
 
         if (!$this->onlyStaticImage) {
             $fp = fopen(str_replace(".json", "", $this->fileName) . '_sum.mjpeg', 'w');
+        } else {
+            $fp = fopen(str_replace(".json", "", $this->fileName) . '_sum.jpg', 'w');
         }
 
         // Render graphs
@@ -329,7 +357,7 @@ class EvDashboardOverview {
                         $this->params['lastOdoKm'] = $row['odoKm'];
                         $this->params['lastOdoKmPosX'] = $x;
                     }
-                    if ($this->params['chargingStartX'] == -1 && $row['speedKmh'] < 3 && $row['batPowKw'] > 1) {
+                    if ($this->params['chargingStartX'] == -1 && ($row['chargingOn']/* || ($row['speedKmh'] < 3 && $row['batPowKw'] > 1) */)) {
                         $this->params['chargingStartX'] = $x;
                         $this->params['lastSocPerc'] = -1;
                         $this->params['lastSocPercPosX'] = -1;
@@ -339,8 +367,9 @@ class EvDashboardOverview {
                             $this->params['lastSocPerc'] = $row['socPerc'];
                             $this->params['lastSocPercPosX'] = $x;
                         }
-                        if ($row['speedKmh'] > 10 || $row['batPowKw'] < 1) {
-                            imageline($this->image, $x0, $this->params['graph0y'] - ($this->params['yStep'] * $prevRow['batPowKw']), $x, $this->params['graph0y'] - ($this->params['yStep'] * $row['batPowKw']), $this->fields['batPowKw']['color']);
+                        if (!$row['chargingOn']/* || ($row['speedKmh'] > 10 || $row['batPowKw'] < 1) */) {
+                            if ($prevRow !== false)
+                                imageline($this->image, $x0, $this->params['graph0y'] - ($this->params['yStep'] * $prevRow['batPowKw']), $x, $this->params['graph0y'] - ($this->params['yStep'] * $row['batPowKw']), $this->fields['batPowKw']['color']);
                             imagettftext($this->image, 16, 0, $this->params['chargingStartX'], $this->height - 48, $this->white, $this->font, "CHARGING");
                             imagefilledrectangle($this->image, $this->params['chargingStartX'], $this->height - 32, ($x < $this->params['chargingStartX'] ? $x0 : $x), $this->height - 30, $this->fields['batPowKw']['color']);
                             $this->params['chargingStartX'] = -1;
@@ -428,9 +457,12 @@ class EvDashboardOverview {
         // Render graphs
         if (!$this->onlyStaticImage) {
             $fp = fopen(str_replace(".json", "", $this->fileName) . '_map.mjpeg', 'w');
+        } else {
+            $fp = fopen(str_replace(".json", "", $this->fileName) . '_map.jpg', 'w');
         }
 
         $eleStep = $this->width / $this->params['keyframes'];
+        $stopFrame = getNum("frame", 0);
         for ($frame = 0; $frame < $this->params['keyframes']; $frame++) {
 
             if ($this->onlyStaticImage) {
@@ -621,68 +653,108 @@ class EvDashboardOverview {
                     $px += 170;
                     $this->drawMapOsd($px, 96, $textColor, sprintf("%0.1f", $data[LiveData::MODE_IDLE]['dischargedKwh'], 1) . "kWh", " ");
 
+                    // bms
+                    if ($this->bms == 1) {
+                        $y = 700;
+                        $coldgate = ($row['bMaxC'] >= 35 ? "RAPIDGATE " . sprintf("%1.0f", $row['bMaxC']) . "°C" :
+                                ($row['bMinC'] < 5 ? "COLDGATE LEVEL 3 (" . sprintf("%1.0f", $row['bMinC']) . "°C)" :
+                                ($row['bMinC'] < 15 ? "COLDGATE LEVEL 2 (" . sprintf("%1.0f", $row['bMinC']) . "°C)" :
+                                ($row['bMinC'] < 25 ? "COLDGATE LEVEL 1 (" . sprintf("%1.0f", $row['bMinC']) . "°C)" :
+                                "OPTIMAL BAT.TEMPERATURE (25-34°C)" ))));
+                    /*    imagettftext($this->image, 38, 0, 25, $y, $this->black, $this->font, "COOLANT");
+                        imagettftext($this->image, 38, 0, 325, $y, $this->black, $this->font, sprintf("%1.0f", $row['bWatC']) . "°C");
+                        $y += 48;
+                        imagettftext($this->image, 38, 0, 25, $y, $this->black, $this->font, "MOTOR");
+                        imagettftext($this->image, 38, 0, 325, $y, $this->black, $this->font, sprintf("%1.0f", $row['invC']) . " / " . sprintf("%1.0f", $row['motC']) . "°C");
+                        $y += 48;
+                    */    imagettftext($this->image, 38, 0, 25, $y, $this->black, $this->font, "BATTERY");
+                        imagettftext($this->image, 38, 0, 325, $y, $this->black, $this->font2, sprintf("%1.0f", $row['bMinC']) . " / " . sprintf("%1.0f", $row['bMaxC']) . "°C");
+                        if ($row['chargingOn'] == 1) {
+                            $y += 48;
+                            imagettftext($this->image, 38, 0, 25, $y, $this->black, $this->font,
+                                    "CHARGING");
+                            imagettftext($this->image, 38, 0, 325, $y, $this->black, $this->font2,
+                                    round($row['batPowKw'], 0) . "kW");
+                        }
+                        $y += 48;
+                        imagettftext($this->image, 38, 0, 25, $y, $this->black, $this->font, "POWER KW");
+                        imagettftext($this->image, 38, 0, 325, $y, $this->black, $this->font2, sprintf("%1.2f", $row['batPowKw']) . "");
+                        $y += 48;
+                        imagettftext($this->image, 38, 0, 25, $y, $this->black, $this->font, "CELL MIN [V]");
+                        imagettftext($this->image, 38, 0, 325, $y, $this->black, $this->font2, sprintf("%1.2f", $row['cellMinV']) . "");
+                        $y += 48;
+                        imagettftext($this->image, 38, 0, 25, $y, $this->black, $this->font, "BMS MODE");
+                        imagettftext($this->image, 38, 0, 325, $y, $this->black, $this->font2, ( $row['bmMode'] == "ÜNKNOWN" ? "" : $row['bmMode']));
+                        $y += 48;
+                        imagettftext($this->image, 38, 0, 25, $y, $this->black, $this->font, "STATE");
+                        imagettftext($this->image, 38, 0, 325, $y, $this->black, $this->font2, $coldgate);
+                        $y += 48;
+                    /*    imagettftext($this->image, 38, 0, 25, $y, $this->black, $this->font, "CELL MAX [V]");
+                        imagettftext($this->image, 38, 0, 325, $y, $this->black, $this->font2, sprintf("%1.2f", $row['cellMaxV']) . "");
+                    */}
+
                     // itinerar
                     $y = 180;
                     $opacity = imagecolorallocatealpha($this->image, 0, 0, 0, 72);
                     if (!$this->darkMode)
                         $opacity = imagecolorallocatealpha($this->image, 255, 255, 255, 48);
-                    imagefilledrectangle($this->image, 20, $y + 4, 600, $y + 4 - 32, $opacity);
+                    imagefilledrectangle($this->image, 20, $y + 4, 610, $y + 4 - 32, $opacity);
                     imagettftext($this->image, 20, 0, 30, $y, $textColor, $this->font, "MODE");
                     $text = "TIME";
                     $box = imagettfbbox(20, 0, $this->font, $text);
-                    imagettftext($this->image, 20, 0, 220 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                    imagettftext($this->image, 20, 0, 190 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                     $text = "DIS/CH.KWH";
                     $box = imagettfbbox(20, 0, $this->font, $text);
-                    imagettftext($this->image, 20, 0, 370 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                    imagettftext($this->image, 20, 0, 340 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                     $text = "KM/SOC";
                     $box = imagettfbbox(20, 0, $this->font, $text);
-                    imagettftext($this->image, 20, 0, 470 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                    imagettftext($this->image, 20, 0, 440 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                     $text = "~KWH/100KM";
                     $box = imagettfbbox(20, 0, $this->font, $text);
-                    imagettftext($this->image, 20, 0, 630 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                    imagettftext($this->image, 20, 0, 600 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                     $y += 32;
                     $lastSoc = 0;
                     foreach (array_slice($data['stats'], -10, 10) as $statsRow) {
                         $opacity = imagecolorallocatealpha($this->image, 0, 0, 0, 72);
                         if (!$this->darkMode)
                             $opacity = imagecolorallocatealpha($this->image, 255, 255, 255, 48);
-                        imagefilledrectangle($this->image, 20, $y + 4, 600, $y + 4 - 32, $opacity);
+                        imagefilledrectangle($this->image, 20, $y + 4, 610, $y + 4 - 32, $opacity);
                         //
                         imagettftext($this->image, 20, 0, 30, $y, $textColor, $this->font, ($statsRow['mode'] == LiveData::MODE_DRIVE ? "DRIVE" : "CHARGE"));
                         // time
                         $text = formatHourMin($statsRow['timeSec']);
                         $box = imagettfbbox(20, 0, $this->font, $text);
-                        imagettftext($this->image, 20, 0, 220 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                        imagettftext($this->image, 20, 0, 190 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                         //
                         if ($statsRow['dischargedKwh'] != 0) {
                             $text = sprintf("%2.1f", $statsRow['dischargedKwh']);
                             $box = imagettfbbox(20, 0, $this->font, $text);
-                            imagettftext($this->image, 20, 0, 300 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                            imagettftext($this->image, 20, 0, 270 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                         }
                         //
                         $text = "+" . sprintf("%.1f", $statsRow['chargedKwh']);
                         $box = imagettfbbox(20, 0, $this->font, $text);
-                        imagettftext($this->image, 20, 0, 370 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                        imagettftext($this->image, 20, 0, 340 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                         //
                         if ($statsRow['mode'] == LiveData::MODE_DRIVE) {
                             $text = $statsRow['odoKm'] . " km";
                             $box = imagettfbbox(20, 0, $this->font, $text);
-                            imagettftext($this->image, 20, 0, 470 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                            imagettftext($this->image, 20, 0, 440 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                             if ($statsRow['odoKm'] > 0) {
                                 $text = "~" . -sprintf("%0.1f", round(($statsRow['dischargedKwh'] + $statsRow['chargedKwh']) / $statsRow['odoKm'] * 100, 1));
                                 $box = imagettfbbox(20, 0, $this->font, $text);
-                                imagettftext($this->image, 20, 0, 540 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                                imagettftext($this->image, 20, 0, 510 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                             }
                             $lastSoc = round($statsRow['endSocPerc']);
                         }
                         if ($statsRow['mode'] == LiveData::MODE_CHARGING) {
                             $text = $lastSoc . "->" . round($statsRow['endSocPerc']) . ($statsRow['endSocPerc'] == 100 ? "" : "%");
                             $box = imagettfbbox(20, 0, $this->font, $text);
-                            imagettftext($this->image, 20, 0, 470 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                            imagettftext($this->image, 20, 0, 440 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                             if ($statsRow['timeSec'] > 0) {
                                 $text = "~" . sprintf("%0.1f", ($statsRow['chargedKwh'] / ($statsRow['timeSec'] / 3600)), 1) . " kW";
                                 $box = imagettfbbox(20, 0, $this->font, $text);
-                                imagettftext($this->image, 20, 0, 592 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
+                                imagettftext($this->image, 20, 0, 562 - (abs($box[4] - $box[0])), $y, $textColor, $this->font, $text);
                             }
                             //
                             $mx = floor(($this->width / 2) - $this->tileSize * ( $this->centerX - lonToTile($statsRow['lon'], $this->params['zoom'])));
@@ -721,6 +793,26 @@ class EvDashboardOverview {
      */
     function renderChargingGraph() {
 
+//        if (!$this->onlyStaticImage) {
+            $fp = fopen(str_replace(".json", "", $this->fileName) . '_chr.svg', 'w');
+//        }
+//        if ($this->onlyStaticImage) {
+//            header('Content-type: image/svg');
+//        } else {
+            ob_start();
+//        }
+//        imagejpeg($this->image);
+        require 'svggraph.php';
+
+//        if ($this->onlyStaticImage) {
+//            die();
+//        }
+        $value = ob_get_contents();
+        fwrite($fp, $value);
+        ob_end_clean();
+        fclose($fp);            
+  
+/*  
         $this->liveData->initData();
         foreach ($this->jsonData as $row) {
             $this->liveData->processRow($row);
@@ -733,6 +825,7 @@ class EvDashboardOverview {
                 print_r($sumData);
             }
         }
+*/
     }
 
     /**

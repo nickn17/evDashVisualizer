@@ -52,11 +52,23 @@ class LiveData {
 // Detect mode
         $sugMode = self::MODE_IDLE;
         if ($row !== false) {
-            if (($row['motorRpm'] == -1 || $row['motorRpm'] == 0) && $row['batPowKw'] > 0.5) {
-                $sugMode = self::MODE_CHARGING;
-            }
-            if ($row['motorRpm'] > 0) {
-                $sugMode = self::MODE_DRIVE;
+            if ($row['carType'] < 9 || $row['carType'] > 11) {
+                if ($row['chargingOn'] || (($row['motorRpm'] == -1 || $row['motorRpm'] == 0) && $row['batPowKw'] > 0.5)) {
+                    $sugMode = self::MODE_CHARGING;
+                }
+                if ($row['motorRpm'] > 0) {
+                    $sugMode = self::MODE_DRIVE;
+                }
+            } else {
+                if (isset($row['speedKmhGPS']) && $row['speedKmhGPS'] != -1) {
+                    $row['speedKmh'] = $row['speedKmhGPS'];
+                }
+                if ($row['chargingOn']) {
+                    $sugMode = self::MODE_CHARGING;
+                }
+                if ($row['speedKmh'] >= 5) {
+                    $sugMode = self::MODE_DRIVE;
+                }
             }
         }
 
