@@ -56,7 +56,7 @@ function lonPerPixel($tileNo, $zoom) {
 
     $a1 = ($tileNo / pow(2, $zoom) * 360 - 180);
     $a2 = (($tileNo + 1) / pow(2, $zoom) * 360 - 180);
-    return abs($a2 - $a1) / 256;
+    return abs($a2 - $a1) / 512;
 }
 
 /**
@@ -67,7 +67,7 @@ function latPerPixel($tileNo, $zoom) {
     $a1 = rad2deg(atan(sinh($n)));
     $n = pi() * (1 - 2 * ($tileNo + 1) / pow(2, $zoom));
     $a2 = rad2deg(atan(sinh($n)));
-    return abs($a2 - $a1) / 256;
+    return abs($a2 - $a1) / 512;
 }
 
 /*  tileToLon(x: number, zoom: number): number {
@@ -85,15 +85,25 @@ function latPerPixel($tileNo, $zoom) {
 function fetchTile($url) {
 
     $cacheTileName = "cache/tile_" . md5($url) . ".jpg";
-    if (file_exists($cacheTileName)) {
+    if (file_exists($cacheTileName) && filesize($cacheTileName) > 100) {
         return file_get_contents($cacheTileName);
     }
 
-    usleep(500000); //0.5s
+    global $abc;
+    $abc++;
+    if ($abc >= 3) {
+        $abc = 0;
+        $url = str_replace("/a.", "/" . chr(97 + $abc), $url);
+    }
+
+    usleep(5000000); //0.5s
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
     curl_setopt($ch, CURLOPT_USERAGENT, "TileProxy/1.0");
     curl_setopt($ch, CURLOPT_URL, $url);
+    if (PHP_SAPI == 'cli') {
+        echo "$url\n";
+    }
     $tile = curl_exec($ch);
     curl_close($ch);
     file_put_contents($cacheTileName, $tile);

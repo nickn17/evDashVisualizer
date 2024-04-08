@@ -6,18 +6,141 @@ class LiveData {
     const MODE_CHARGING = 2; // < 10kmh && >= 2kW
     const MODE_IDLE = 3; // else IDLE :)
 
+    private $carIndex;
     private $liveData;
     private $prevRow;
+    public $lastRow;
     private $startRow;
     private $debug;
+    private $usedChargingTrueCount;
+    public $carName;
+    public $loaded;
+    public $fileName;
+    public $jsonData;
+    public $startTimestamp;
+    public $endTimestamp;
 
     /**
      * Live data
      */
-    function __construct() {
+    function __construct($index, $fileName, $carName) {
 
         $this->initData();
         $this->debug = false;
+        $this->usedChargingTrueCount = 0;
+        $this->loaded = 1;
+        $this->carName = $carName;
+        $this->fileName = $fileName;
+        $this->startTimestamp = $this->endTimestamp = null;
+        $this->carIndex = $index;
+        $this->liveData = [];
+        $this->liveData['minOdoKm'] = 0;
+        $this->lastRow = false;
+
+        // Checks
+        if ($index == 1) {
+            if (substr(strtolower($fileName), -5) != ".json") {
+                die("JSON file required");
+            }
+        }
+        if ($fileName != "" && !file_exists($fileName)) {
+            echo sprintf("File %s not exists\n", $fileName);
+        }
+
+        if ($index == 1 || $fileName != "") {
+            $this->loaded = true;
+            $this->parseData();
+        }
+    }
+
+    /**
+     * Parse data
+     */
+    function parseData() {
+
+        // Valid json data
+        $data = file_get_contents($this->fileName);
+
+        // normalize evDash sdcard format
+        if (substr($data, 0, 1) != "[") {
+            $cnt = 0;
+            $dataArr = explode("\n", $data);
+            foreach ($dataArr as $row) {
+                if (substr(rtrim($row, "\r"), -2) != "},") {
+                    echo "Invalid line: $row\n\n";
+                }
+                $cnt++;
+                if ($cnt >= 5)
+                    break;
+            }
+            unset($dataArr);
+            $data = rtrim(rtrim($data, "\n"), ",");
+            $data = "[" . $data . "]";
+        }
+
+        $tsFrom = getNum('tsfrom', 0);
+        $tsTo = getNum('tsto', 0);
+
+        $this->jsonData = json_decode($data, true);
+        foreach ($this->jsonData as $key => &$row) {
+
+            if ($this->carIndex == 2) {
+                $row['currTime'] += (1 * 3600);
+            }
+            if ($tsFrom != 0 && $row['currTime'] < $tsFrom) {
+                unset($this->jsonData[$key]);
+                continue;
+            }
+            if ($tsTo != 0 && $row['currTime'] > $tsTo) {
+                unset($this->jsonData[$key]);
+                continue;
+            }
+            if ($row['lat'] < 20 || $row['lon'] < 7) {
+                unset($this->jsonData[$key]);
+                continue;
+            }
+
+
+            // Calculated battery management mode if not present
+            if (!isset($row['bmMode'])) {
+                $row['bmMode'] = "UNKNOWN";
+            }
+            if (!isset($row['chargingOn']))
+                $row['chargingOn'] = false;
+            //
+            if ($row['odoKm'] <= 1000 || $row['socPerc'] == -1 || /* $row['currTime'] < 1533210449 || */
+                    $row['alt'] == -501 ||
+                    ($row['carType'] == 0 /* eniro */ && ($row['socPerc'] == 0 || $row['bWatC'] == -100 || $row['opTime'] == 0))
+            ) {
+                unset($this->jsonData[$key]);
+                continue;
+            }
+            if ($row['alt'] < 100 || $row['alt'] > 2500) {
+                $row['alt'] = ($row['alt'] < 100 ? 0 : ($row['alt'] > 2500 ? 2500 : $row['alt']));
+            }
+            if (isset($row['speedKmhGPS']) && $row['speedKmhGPS'] != -1) {
+                $row['speedKmh'] = $row['speedKmhGPS'];
+            }
+            // Fix -1 speed
+            if ($row['speedKmh'] <= 1) {
+                $row['speedKmh'] = 0;
+            }
+
+            if ($this->liveData['minOdoKm'] == 0) {
+                $this->liveData['minOdoKm'] = $row['odoKm'];
+            }
+
+            //
+            if ($this->startTimestamp === null || $row["currTime"] < $this->startTimestamp) {
+                $this->startTimestamp = $row["currTime"];
+            }
+            if ($this->endTimestamp === null || $row["currTime"] > $this->endTimestamp) {
+                $this->endTimestamp = $row["currTime"];
+            }
+        }
+
+        unset($data);
+        //
     }
 
     /**
@@ -25,6 +148,7 @@ class LiveData {
      */
     function initData() {
 //
+        $this->liveData['carName'] = $this->carName;
         $this->liveData['mode'] = self::MODE_IDLE;
         $this->liveData['modeCounter'] = 0;
         $this->liveData[self::MODE_DRIVE]['timeSec'] = 0;
@@ -52,11 +176,16 @@ class LiveData {
 // Detect mode
         $sugMode = self::MODE_IDLE;
         if ($row !== false) {
+            if ($row['chargingOn']) {
+                $this->usedChargingTrueCount++;
+            }
+
             if ($row['carType'] < 9 || $row['carType'] > 11) {
-                if ($row['chargingOn'] || (($row['motorRpm'] == -1 || $row['motorRpm'] == 0) && $row['batPowKw'] > 0.5)) {
+                if ($row['chargingOn'] || // log with charging=true support
+                        ($this->usedChargingTrueCount < 10 && ($row['motorRpm'] == -1 || $row['motorRpm'] == 0) && $row['batPowKw'] > 0.5)) {
                     $sugMode = self::MODE_CHARGING;
                 }
-                if ($row['motorRpm'] > 0) {
+                if (($this->usedChargingTrueCount < 10 || !$row['chargingOn']) && $row['motorRpm'] > 0) {
                     $sugMode = self::MODE_DRIVE;
                 }
             } else {
@@ -135,7 +264,7 @@ class LiveData {
                 }
 
                 $this->liveData['mode'] = $sugMode;
-                $this->liveData['modeCounter'] ++;
+                $this->liveData['modeCounter']++;
                 $this->startRow = $row;
             }
         }
@@ -155,4 +284,10 @@ class LiveData {
         return $this->liveData;
     }
 
+    /**
+     * Get mode
+     */
+    function getMode() {
+        return $this->liveData['mode'];
+    }
 }
